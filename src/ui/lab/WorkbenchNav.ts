@@ -1,9 +1,15 @@
 import { THEME } from './theme';
 
-export type WorkbenchTab = 'BUILD' | 'CRAFT';
+export type WorkbenchTab = 'PLASMID' | 'ASSEMBLE' | 'BUILD';
+
+const TAB_CONFIG: { key: WorkbenchTab; label: string }[] = [
+  { key: 'PLASMID', label: '실험체' },
+  { key: 'ASSEMBLE', label: '조립' },
+  { key: 'BUILD', label: '빌드' },
+];
 
 /**
- * WorkbenchNav — 연구실 2탭 네비게이션 바 (빌드대 / 제작대)
+ * WorkbenchNav — 연구실 3탭 네비게이션 바 (실험체 / 조립 / 빌드)
  *
  * 부모(LabScene)가 (0, 56)에 배치.
  * 전체 너비 960, 높이 32.
@@ -13,79 +19,63 @@ export class WorkbenchNav extends Phaser.GameObjects.Container {
   private readonly WIDTH = 960;
   private readonly HEIGHT = 32;
   private readonly DIVIDER_WIDTH = 1;
+  private readonly TAB_COUNT = TAB_CONFIG.length;
 
   private activeTab: WorkbenchTab = 'BUILD';
 
-  // 그래픽 요소
-  private buildBg!: Phaser.GameObjects.Graphics;
-  private craftBg!: Phaser.GameObjects.Graphics;
-  private buildLabel!: Phaser.GameObjects.Text;
-  private craftLabel!: Phaser.GameObjects.Text;
-  private divider!: Phaser.GameObjects.Graphics;
+  // 탭별 UI 요소
+  private tabBgs: Phaser.GameObjects.Graphics[] = [];
+  private tabLabels: Phaser.GameObjects.Text[] = [];
+  private dividers: Phaser.GameObjects.Graphics[] = [];
   private bottomBorder!: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y);
 
-    const tabWidth = (this.WIDTH - this.DIVIDER_WIDTH) / 2;
+    const tabWidth = (this.WIDTH - this.DIVIDER_WIDTH * (this.TAB_COUNT - 1)) / this.TAB_COUNT;
 
-    // --- 빌드대 탭 배경 ---
-    this.buildBg = this.scene.add.graphics();
-    this.add(this.buildBg);
+    // --- 탭 생성 ---
+    TAB_CONFIG.forEach((tab, i) => {
+      const tabX = i * (tabWidth + this.DIVIDER_WIDTH);
 
-    // --- 제작대 탭 배경 ---
-    this.craftBg = this.scene.add.graphics();
-    this.add(this.craftBg);
+      // 배경
+      const bg = this.scene.add.graphics();
+      this.add(bg);
+      this.tabBgs.push(bg);
 
-    // --- 탭 사이 구분선 (1px) ---
-    this.divider = this.scene.add.graphics();
-    this.divider.fillStyle(THEME.colors.tabBorder, 1);
-    this.divider.fillRect(tabWidth, 0, this.DIVIDER_WIDTH, this.HEIGHT);
-    this.add(this.divider);
+      // 라벨
+      const label = this.scene.add.text(tabX + tabWidth / 2, this.HEIGHT / 2, tab.label, {
+        fontFamily: THEME.font.family,
+        fontSize: THEME.font.sizeMedium,
+        color: '#ffffff',
+      });
+      label.setOrigin(0.5);
+      this.add(label);
+      this.tabLabels.push(label);
+
+      // 클릭 영역
+      const zone = this.scene.add
+        .zone(tabX + tabWidth / 2, this.HEIGHT / 2, tabWidth, this.HEIGHT)
+        .setInteractive({ useHandCursor: true });
+      zone.on('pointerdown', () => this.setTab(tab.key));
+      this.add(zone);
+    });
+
+    // --- 구분선 (탭 사이) ---
+    for (let i = 1; i < this.TAB_COUNT; i++) {
+      const divX = i * (tabWidth + this.DIVIDER_WIDTH) - this.DIVIDER_WIDTH;
+      const divider = this.scene.add.graphics();
+      divider.fillStyle(THEME.colors.tabBorder, 1);
+      divider.fillRect(divX, 0, this.DIVIDER_WIDTH, this.HEIGHT);
+      this.add(divider);
+      this.dividers.push(divider);
+    }
 
     // --- 하단 보더 라인 (1px, 반투명) ---
     this.bottomBorder = this.scene.add.graphics();
     this.bottomBorder.fillStyle(THEME.colors.tabBorder, 0.5);
     this.bottomBorder.fillRect(0, this.HEIGHT - 1, this.WIDTH, 1);
     this.add(this.bottomBorder);
-
-    // --- 빌드대 라벨 ---
-    this.buildLabel = this.scene.add.text(tabWidth / 2, this.HEIGHT / 2, '빌드대', {
-      fontFamily: THEME.font.family,
-      fontSize: THEME.font.sizeMedium,
-      color: '#ffffff',
-    });
-    this.buildLabel.setOrigin(0.5);
-    this.add(this.buildLabel);
-
-    // --- 제작대 라벨 ---
-    const craftTabX = tabWidth + this.DIVIDER_WIDTH;
-    this.craftLabel = this.scene.add.text(
-      craftTabX + tabWidth / 2,
-      this.HEIGHT / 2,
-      '제작대',
-      {
-        fontFamily: THEME.font.family,
-        fontSize: THEME.font.sizeMedium,
-        color: '#ffffff',
-      },
-    );
-    this.craftLabel.setOrigin(0.5);
-    this.add(this.craftLabel);
-
-    // --- 클릭 영역: 빌드대 ---
-    const buildZone = this.scene.add
-      .zone(tabWidth / 2, this.HEIGHT / 2, tabWidth, this.HEIGHT)
-      .setInteractive({ useHandCursor: true });
-    buildZone.on('pointerdown', () => this.setTab('BUILD'));
-    this.add(buildZone);
-
-    // --- 클릭 영역: 제작대 ---
-    const craftZone = this.scene.add
-      .zone(craftTabX + tabWidth / 2, this.HEIGHT / 2, tabWidth, this.HEIGHT)
-      .setInteractive({ useHandCursor: true });
-    craftZone.on('pointerdown', () => this.setTab('CRAFT'));
-    this.add(craftZone);
 
     // 초기 상태 렌더
     this.render();
@@ -106,22 +96,20 @@ export class WorkbenchNav extends Phaser.GameObjects.Container {
 
   /** 활성/비활성 상태에 따라 배경·텍스트 색상 갱신 */
   private render(): void {
-    const tabWidth = (this.WIDTH - this.DIVIDER_WIDTH) / 2;
-    const isBuild = this.activeTab === 'BUILD';
+    const tabWidth = (this.WIDTH - this.DIVIDER_WIDTH * (this.TAB_COUNT - 1)) / this.TAB_COUNT;
 
-    // 빌드대 탭 배경
-    this.buildBg.clear();
-    this.buildBg.fillStyle(isBuild ? THEME.colors.tabActive : THEME.colors.panelBg, 1);
-    this.buildBg.fillRect(0, 0, tabWidth, this.HEIGHT);
+    TAB_CONFIG.forEach((tab, i) => {
+      const tabX = i * (tabWidth + this.DIVIDER_WIDTH);
+      const isActive = tab.key === this.activeTab;
 
-    // 제작대 탭 배경
-    const craftTabX = tabWidth + this.DIVIDER_WIDTH;
-    this.craftBg.clear();
-    this.craftBg.fillStyle(!isBuild ? THEME.colors.tabActive : THEME.colors.panelBg, 1);
-    this.craftBg.fillRect(craftTabX, 0, tabWidth, this.HEIGHT);
+      this.tabBgs[i].clear();
+      this.tabBgs[i].fillStyle(
+        isActive ? THEME.colors.tabActive : THEME.colors.panelBg,
+        1,
+      );
+      this.tabBgs[i].fillRect(tabX, 0, tabWidth, this.HEIGHT);
 
-    // 텍스트 색상 갱신
-    this.buildLabel.setColor(isBuild ? THEME.colors.textMain : THEME.colors.textDim);
-    this.craftLabel.setColor(!isBuild ? THEME.colors.textMain : THEME.colors.textDim);
+      this.tabLabels[i].setColor(isActive ? THEME.colors.textMain : THEME.colors.textDim);
+    });
   }
 }

@@ -35,6 +35,30 @@ export function getInteractionType(
   return InteractionType.Fusion;
 }
 
+// ─── 시너지 힌트 (CraftingInventory 하이라이트용) ───
+
+export interface SynergyHint {
+  interactionType: InteractionType;
+  withTags: CodonRoleTag[];
+}
+
+/**
+ * 후보 코돈의 역할 태그와 인접 슬롯 태그들 간의 상호작용을 계산한다.
+ *
+ * candidateTag: 인벤토리에서 평가할 코돈의 roleTag
+ * adjacentTags: 활성 슬롯의 좌/우 인접 코돈 roleTag (0~2개)
+ * 반환: 각 인접 태그와의 상호작용 타입 목록
+ */
+export function getSynergyHints(
+  candidateTag: CodonRoleTag,
+  adjacentTags: CodonRoleTag[],
+): SynergyHint[] {
+  return adjacentTags.map(adjTag => ({
+    interactionType: getInteractionType(candidateTag, adjTag),
+    withTags: [adjTag],
+  }));
+}
+
 /**
  * 시퀀스 내 인접 코돈 쌍의 상호작용을 분석한다.
  *

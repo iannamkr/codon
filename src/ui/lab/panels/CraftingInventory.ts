@@ -6,8 +6,10 @@ import Phaser from 'phaser';
 import type { Creature, Codon, CodonRoleTag } from '../../../data/types';
 import { AMINO_ACIDS } from '../../../data/codons';
 import { filterByRole } from '../../../systems/sequence-builder';
+import { getInteractionType } from '../../../systems/interaction';
+import { InteractionType } from '../../../data/types';
 import { removeCodon } from '../../../systems/pool-manager';
-import { THEME, getRoleColor, getRarityLabel } from '../theme';
+import { THEME, getRoleColor, getRarityLabel, getInteractionColor } from '../theme';
 
 // ─── 필터 타입 ───
 
@@ -15,7 +17,7 @@ type FilterType = 'all' | CodonRoleTag;
 
 // ─── 레이아웃 상수 ───
 
-const PANEL_W = 340;
+const PANEL_W = 300;
 const PANEL_H = 440;
 
 // 필터 바
@@ -59,6 +61,8 @@ export class CraftingInventory extends Phaser.GameObjects.Container {
   private selectedIndex = -1;
   private selectedCodon: Codon | null = null;
   private selectedPoolIndex = -1;
+  private placedCodons = new Set<Codon>();
+  private adjacentTags: CodonRoleTag[] = [];
 
   // 필터 칩 UI 요소
   private filterChips: {
@@ -104,9 +108,31 @@ export class CraftingInventory extends Phaser.GameObjects.Container {
     this.selectedCodon = null;
     this.selectedPoolIndex = -1;
     this.scrollY = 0;
+    this.placedCodons.clear();
     this.redrawFilterBar();
     this.rebuildList();
     this.renderEmpty();
+  }
+
+  /** 조립대에 배치된 코돈 목록 설정 (배치됨 마커 표시용) */
+  setPlacedCodons(codons: (Codon | null)[]): void {
+    this.placedCodons.clear();
+    for (const c of codons) {
+      if (c) this.placedCodons.add(c);
+    }
+    this.rebuildList();
+  }
+
+  /** 시너지 컨텍스트 설정 (인접 슬롯 태그 기반 하이라이트) */
+  setSynergyContext(adjacentTags: CodonRoleTag[]): void {
+    this.adjacentTags = adjacentTags;
+    this.rebuildList();
+  }
+
+  /** 시너지 컨텍스트 초기화 */
+  clearSynergyContext(): void {
+    this.adjacentTags = [];
+    this.rebuildList();
   }
 
   // ═════════════════════════════════════════════
@@ -240,7 +266,7 @@ export class CraftingInventory extends Phaser.GameObjects.Container {
     this.listMask.fillStyle(0xffffff);
     // 제작대 활성 시 화면 위치: inventoryX(610), contentY(88) + LIST_Y(32)
     this.listMask.fillRect(
-      WB.craft.inventoryX,
+      WB.assemble.poolX,
       WB.contentY + LIST_Y,
       PANEL_W,
       LIST_H,
@@ -258,7 +284,7 @@ export class CraftingInventory extends Phaser.GameObjects.Container {
 
     // 포인터가 목록 영역 안에 있는지 확인 (화면 좌표 기준)
     const WB = THEME.layout.workbench;
-    const listScreenX = WB.craft.inventoryX;
+    const listScreenX = WB.assemble.poolX;
     const listScreenY = WB.contentY + LIST_Y;
     if (
       pointer.x < listScreenX || pointer.x > listScreenX + PANEL_W ||
@@ -307,27 +333,98 @@ export class CraftingInventory extends Phaser.GameObjects.Container {
       const roleHex = '#' + roleColor.toString(16).padStart(6, '0');
       const rarity = getRarityLabel(amino.pathCount);
       const isSelected = this.selectedIndex === i;
+      const isPlaced = this.placedCodons.has(codon);
+
+      // ─── 시너지 힌트 계산 ───
+      const hasSynergy = this.adjacentTags.length > 0 && !isPlaced;
+      let dominantInteraction: InteractionType | null = null;
+      let barColor = roleColor;
+
+      if (hasSynergy) {
+        const interactions = this.adjacentTags.map(adjTag =>
+          getInteractionType(amino.roleTag, adjTag),
+        );
+        // 대표 타입 선정: Resonance > Opposition > Fusion 우선순위
+        if (interactions.includes(InteractionType.Resonance)) {
+          dominantInteraction = InteractionType.Resonance;
+        } else if (interactions.includes(InteractionType.Opposition)) {
+          dominantInteraction = InteractionType.Opposition;
+        } else {
+          dominantInteraction = InteractionType.Fusion;
+        }
+        barColor = getInteractionColor(dominantInteraction);
+      }
 
       // 아이템 배경
       const itemBg = this.scene.add.graphics();
-      itemBg.fillStyle(
-        isSelected ? THEME.colors.tabActive : THEME.colors.cardBg,
-        isSelected ? 0.8 : 0.5,
-      );
+      if (isPlaced) {
+        itemBg.fillStyle(THEME.colors.tabActive, 0.3);
+      } else if (hasSynergy && dominantInteraction) {
+        // 시너지 배경 틴트
+        const tintColor = getInteractionColor(dominantInteraction);
+        itemBg.fillStyle(
+          isSelected ? THEME.colors.tabActive : tintColor,
+          isSelected ? 0.8 : 0.15,
+        );
+      } else {
+        itemBg.fillStyle(
+          isSelected ? THEME.colors.tabActive : THEME.colors.cardBg,
+          isSelected ? 0.8 : 0.5,
+        );
+      }
       itemBg.fillRoundedRect(LIST_PAD, iy, listW, ITEM_H, 3);
-      // 왼쪽 역할 색상 바 (3px)
-      itemBg.fillStyle(roleColor, 1);
+      // 왼쪽 바: 시너지 컨텍스트 시 상호작용 색상, 아니면 역할 색상
+      itemBg.fillStyle(barColor, 1);
       itemBg.fillRect(LIST_PAD, iy, 3, ITEM_H);
       this.listContainer.add(itemBg);
 
       // 코돈명 + 스킬명 + 희귀도
       const label = `${codon.triplet} ${amino.skillName}${rarity ? ' ' + rarity : ''}`;
+      // 시너지 컨텍스트에서 공명은 밝게, 그 외는 약간 어둡게
+      let textColor: string;
+      if (isPlaced) {
+        textColor = '#555566';
+      } else if (isSelected) {
+        textColor = THEME.colors.textMain;
+      } else if (hasSynergy && dominantInteraction === InteractionType.Resonance) {
+        textColor = THEME.colors.textMain;
+      } else if (hasSynergy) {
+        textColor = THEME.colors.textDim;
+      } else {
+        textColor = THEME.colors.textDim;
+      }
       const mainText = this.scene.add.text(LIST_PAD + 10, iy + 3, label, {
         fontFamily: THEME.font.family,
         fontSize: THEME.font.sizeSmall,
-        color: isSelected ? THEME.colors.textMain : THEME.colors.textDim,
+        color: textColor,
       });
       this.listContainer.add(mainText);
+
+      // 배치됨 표시 또는 시너지 아이콘
+      if (isPlaced) {
+        const placedTag = this.scene.add.text(listW - 4, iy + ITEM_H / 2, '배치됨', {
+          fontFamily: THEME.font.family,
+          fontSize: '9px',
+          color: '#666677',
+        }).setOrigin(1, 0.5);
+        this.listContainer.add(placedTag);
+      } else if (hasSynergy && dominantInteraction) {
+        // 우측 시너지 아이콘
+        const iconMap: Record<string, string> = {
+          Resonance: '\u25CE',   // ◎
+          Opposition: '\u26A1',  // ⚡
+          Fusion: '\u25C8',      // ◈
+        };
+        const icon = iconMap[dominantInteraction] ?? '';
+        const iconColor = getInteractionColor(dominantInteraction);
+        const iconHex = '#' + iconColor.toString(16).padStart(6, '0');
+        const iconText = this.scene.add.text(listW - 4, iy + ITEM_H / 2, icon, {
+          fontFamily: THEME.font.family,
+          fontSize: THEME.font.sizeMedium,
+          color: iconHex,
+        }).setOrigin(1, 0.5);
+        this.listContainer.add(iconText);
+      }
 
       // 역할 태그 (하단)
       const roleText = this.scene.add.text(LIST_PAD + 10, iy + 18, amino.roleTag, {
@@ -364,6 +461,8 @@ export class CraftingInventory extends Phaser.GameObjects.Container {
 
     this.rebuildList();
     this.renderDetail();
+    // 씬에 코돈 클릭 이벤트 발행 (조립대 배치용)
+    this.scene.events.emit('codonClicked', { codon: this.selectedCodon });
   }
 
   // ═════════════════════════════════════════════

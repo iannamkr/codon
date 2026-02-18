@@ -75,16 +75,42 @@ export const THEME = {
     codonChipW: 52,
     codonChipH: 68,
     interIconW: 16,
-    // ─── 2작업대 레이아웃 ───
+    // ─── 3작업대 레이아웃 ───
+    // 탭 순서 (좌→우): 실험체 | 조립 | 빌드
+    // 콘텐츠 배치: 실험체 x=0, 조립 x=960, 빌드 x=1920
+    // 기본 활성 탭: 빌드 (container.x = -1920)
     workbench: {
       navY: 56,       // WorkbenchNav y (TopHUD 바로 아래)
       navH: 32,       // WorkbenchNav 높이
       contentY: 88,   // 작업대 콘텐츠 y (navY + navH)
       contentH: 452,  // 작업대 콘텐츠 높이 (540 - 88)
       contentW: 960,
-      panOffset: 960,  // 제작대 x 오프셋 (패닝 거리)
+      panOffset: 960,  // 작업대 간 x 오프셋 (패닝 거리)
       panDuration: 250, // 패닝 애니메이션 ms
-      // 빌드대
+      // 플라스미드대 (실험체 정보 + 플라스미드 선택) — x=0..959
+      plasmid: {
+        creatureX: 10,
+        creatureW: 310,
+        creatureH: 440,
+        selectorX: 330,
+        selectorW: 620,
+        selectorH: 440,
+        summaryY: 400,
+        summaryH: 40,
+      },
+      // 조립대 (합성 + 코돈풀 + 시퀀스 조립) — x=960..1919
+      assemble: {
+        synthX: 10,
+        synthW: 280,
+        synthH: 440,
+        poolX: 300,
+        poolW: 300,
+        poolH: 440,
+        assemblerX: 610,
+        assemblerW: 340,
+        assemblerH: 440,
+      },
+      // 빌드대 (빌드 보드 + 분석 + 출격) — x=1920..2879
       build: {
         boardX: 10,
         boardW: 400,
@@ -96,19 +122,7 @@ export const THEME = {
         actionW: 240,
         actionH: 380,
       },
-      // 제작대
-      craft: {
-        synthX: 10,
-        synthW: 300,
-        synthH: 440,
-        geneInfoX: 320,
-        geneInfoW: 280,
-        geneInfoH: 440,
-        inventoryX: 610,
-        inventoryW: 340,
-        inventoryH: 440,
-      },
-      // 코돈 미리보기 오버레이
+      // 코돈 미리보기 오버레이 (빌드대 위)
       overlay: {
         x: 580,
         w: 380,
