@@ -3,6 +3,7 @@ import {
   trackExpedition,
   getDegradationLevel,
   isRetirementReady,
+  getDegradationVisuals,
   DEFAULT_RETIREMENT_THRESHOLD,
 } from "../../src/systems/degradation";
 import { generateRandomCreature } from "../../src/systems/creature-factory";
@@ -136,5 +137,53 @@ describe("isRetirementReady()", () => {
 describe("기본 상수", () => {
   it("DEFAULT_RETIREMENT_THRESHOLD = 10", () => {
     expect(DEFAULT_RETIREMENT_THRESHOLD).toBe(10);
+  });
+});
+
+// ─── 열화 시각화 ───
+
+describe("getDegradationVisuals()", () => {
+  it("Level 0: darkenFactor=0, borderColor=null", () => {
+    const creature = generateRandomCreature();
+    // No degradation = level 0
+    const visuals = getDegradationVisuals(creature);
+    expect(visuals.darkenFactor).toBe(0);
+    expect(visuals.borderColor).toBeNull();
+    expect(visuals.borderAlpha).toBe(0);
+  });
+
+  it("Level 1: 약간의 darken, 테두리 없음", () => {
+    const creature = generateRandomCreature();
+    creature.degradation = { expeditionCount: 2, degradationLevel: 1, isRetired: false, isDead: false };
+    const visuals = getDegradationVisuals(creature);
+    expect(visuals.darkenFactor).toBeGreaterThan(0);
+    expect(visuals.darkenFactor).toBeLessThan(0.2);
+    expect(visuals.borderColor).toBeNull();
+  });
+
+  it("Level 3: 경고 테두리 (금색)", () => {
+    const creature = generateRandomCreature();
+    creature.degradation = { expeditionCount: 6, degradationLevel: 3, isRetired: false, isDead: false };
+    const visuals = getDegradationVisuals(creature);
+    expect(visuals.darkenFactor).toBeCloseTo(0.24, 2);
+    expect(visuals.borderColor).toBe(0xcc9933);
+    expect(visuals.borderAlpha).toBeGreaterThan(0);
+  });
+
+  it("Level 4: 위험 테두리 (빨강)", () => {
+    const creature = generateRandomCreature();
+    creature.degradation = { expeditionCount: 8, degradationLevel: 4, isRetired: false, isDead: false };
+    const visuals = getDegradationVisuals(creature);
+    expect(visuals.darkenFactor).toBeGreaterThanOrEqual(0.32);
+    expect(visuals.borderColor).toBe(0xcc3333);
+    expect(visuals.borderAlpha).toBeGreaterThan(0);
+  });
+
+  it("Level 5: darkenFactor가 0.4를 넘지 않는다", () => {
+    const creature = generateRandomCreature();
+    creature.degradation = { expeditionCount: 10, degradationLevel: 5, isRetired: false, isDead: false };
+    const visuals = getDegradationVisuals(creature);
+    expect(visuals.darkenFactor).toBeLessThanOrEqual(0.4);
+    expect(visuals.borderColor).toBe(0xcc3333);
   });
 });

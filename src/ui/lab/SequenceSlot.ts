@@ -100,7 +100,13 @@ export class SequenceSlot extends Phaser.GameObjects.Container {
     const slotZone = this.scene.add.zone(SLOT_W / 2, SLOT_H / 2, SLOT_W, SLOT_H)
       .setInteractive({ useHandCursor: true });
     slotZone.on('pointerdown', () => {
-      this.emit('slotClick', this.phaseIndex);
+      if (!this.sequence) {
+        // 빈 슬롯 클릭 → 바로 시퀀스 선택
+        this.emit('swapClick', this.phaseIndex);
+      } else {
+        // 채워진 슬롯 클릭 → 하이라이트
+        this.emit('slotClick', this.phaseIndex);
+      }
     });
     this.add(slotZone);
 
@@ -114,7 +120,27 @@ export class SequenceSlot extends Phaser.GameObjects.Container {
     const btnH = 18;
     const pad = 6;
 
-    // [교체]
+    if (!this.sequence) {
+      // 빈 슬롯: [할당] 버튼만
+      const assignBg = this.scene.add.graphics();
+      assignBg.fillStyle(THEME.colors.btnPrimary, 0.6);
+      assignBg.fillRoundedRect(pad, 0, btnW, btnH, 2);
+      this.btnContainer.add(assignBg);
+      const assignText = this.scene.add.text(pad + btnW / 2, btnH / 2, '할당', {
+        fontFamily: THEME.font.family, fontSize: '9px', color: '#ffffff',
+      }).setOrigin(0.5);
+      this.btnContainer.add(assignText);
+      const assignZone = this.scene.add.zone(pad + btnW / 2, btnH / 2, btnW, btnH)
+        .setInteractive({ useHandCursor: true });
+      assignZone.on('pointerdown', (p: Phaser.Input.Pointer, lx: number, ly: number, e: Phaser.Types.Input.EventData) => {
+        e.stopPropagation();
+        this.emit('swapClick', this.phaseIndex);
+      });
+      this.btnContainer.add(assignZone);
+      return;
+    }
+
+    // 채워진 슬롯: [교체] [비우기]
     const swapBg = this.scene.add.graphics();
     swapBg.fillStyle(THEME.colors.btnPrimary, 0.6);
     swapBg.fillRoundedRect(pad, 0, btnW, btnH, 2);
@@ -131,7 +157,6 @@ export class SequenceSlot extends Phaser.GameObjects.Container {
     });
     this.btnContainer.add(swapZone);
 
-    // [비우기]
     const clearBg = this.scene.add.graphics();
     clearBg.fillStyle(THEME.colors.btnDanger, 0.6);
     clearBg.fillRoundedRect(pad + btnW + 6, 0, btnW, btnH, 2);
@@ -209,6 +234,10 @@ export class SequenceSlot extends Phaser.GameObjects.Container {
   private redraw() {
     this.bg.clear();
 
+    // 버튼을 시퀀스 유무에 따라 재구성
+    this.buildButtons();
+    this.btnContainer.setVisible(true);
+
     if (!this.sequence) {
       // 빈 슬롯
       this.bg.fillStyle(THEME.colors.panelBg, 0.5);
@@ -220,12 +249,10 @@ export class SequenceSlot extends Phaser.GameObjects.Container {
       this.interIcons.forEach(ic => ic.setText(''));
       this.summaryText.setText('');
       this.emptyText.setVisible(true);
-      this.btnContainer.setVisible(false);
       return;
     }
 
     this.emptyText.setVisible(false);
-    this.btnContainer.setVisible(true);
 
     // 배경
     this.bg.fillStyle(THEME.colors.panelBg, 1);

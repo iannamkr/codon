@@ -61,3 +61,29 @@ export function isRetirementReady(creature: Creature): boolean {
   if (creature.degradation.isRetired) return true;
   return creature.degradation.expeditionCount >= DEFAULT_RETIREMENT_THRESHOLD;
 }
+
+/** 열화 시각화 데이터 (UI 렌더링용) */
+export function getDegradationVisuals(creature: Creature): {
+  darkenFactor: number;      // 0~0.4
+  borderColor: number | null; // null = 테두리 없음
+  borderAlpha: number;
+} {
+  const level = getDegradationLevel(creature);
+
+  // darkenFactor: level * 0.08, clamped to 0.4
+  const darkenFactor = Math.min(level * 0.08, 0.4);
+
+  // borderColor: none for level<3, gold for level 3, red for level 4+
+  let borderColor: number | null = null;
+  let borderAlpha = 0;
+
+  if (level >= 4) {
+    borderColor = 0xcc3333;
+    borderAlpha = 0.8;
+  } else if (level >= 3) {
+    borderColor = 0xcc9933;
+    borderAlpha = 0.6;
+  }
+
+  return { darkenFactor, borderColor, borderAlpha };
+}

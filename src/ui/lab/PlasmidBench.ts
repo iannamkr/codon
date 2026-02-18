@@ -1,14 +1,16 @@
 // ─── PlasmidBench: 실험체 정보 + 플라스미드 선택 작업대 ───
 // 왼쪽(310px): CreatureInfo — 실험체 정보, 스탯, 파생 스탯, 열화
-// 오른쪽(620px): PlasmidSelector — 플라스미드 카드 리스트, 선택
+// 오른쪽(620px): PlasmidSelector — 플라스미드 카드 리스트, 선택 + 호버 프리뷰
 // 하단(전체 너비, 40px): PoolSummary — 코돈/시퀀스 풀 + 역할 분포
 
 import Phaser from 'phaser';
 import type { Creature, Plasmid, Constitution, CodonRoleTag } from '../../data/types';
 import { AMINO_ACIDS } from '../../data/codons';
 import { deriveStats } from '../../systems/stats';
-import { getDegradationLevel, isRetirementReady, DEFAULT_RETIREMENT_THRESHOLD } from '../../systems/degradation';
+import { getDegradationLevel, getDegradationVisuals, isRetirementReady, DEFAULT_RETIREMENT_THRESHOLD } from '../../systems/degradation';
+import { previewPlasmidEffect } from '../../systems/plasmid-preview';
 import { THEME, getRoleColor, getElementColor } from './theme';
+import { strokeOrganicRect } from './organic-rect';
 
 // ─── 한글 매핑 ───
 
@@ -51,10 +53,23 @@ const STAT_MAX = 50;
 const STAT_BAR_W = 80;
 const STAT_BAR_H = 8;
 
+// 상단 여백 — 마스크 경계(y=0)에서 콘텐츠를 띄워 클리핑 아티팩트 방지
+const TOP_PAD = 6;
+
 // 플라스미드 카드 크기
 const CARD_W = 590;
-const CARD_H = 96;
-const CARD_GAP = 8;
+const CARD_H = 82;
+const CARD_GAP = 6;
+
+// ─── 헬퍼 ───
+
+/** 색상을 darkenFactor만큼 어둡게 */
+function darkenColor(color: number, factor: number): number {
+  const r = Math.round(((color >> 16) & 0xff) * (1 - factor));
+  const g = Math.round(((color >> 8) & 0xff) * (1 - factor));
+  const b = Math.round((color & 0xff) * (1 - factor));
+  return (r << 16) | (g << 8) | b;
+}
 
 export class PlasmidBench extends Phaser.GameObjects.Container {
   private creature: Creature;
@@ -72,6 +87,12 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
   // PoolSummary 요소
   private summaryBg!: Phaser.GameObjects.Graphics;
   private summaryText!: Phaser.GameObjects.Text;
+
+  // 호버 프리뷰
+  private previewContainer: Phaser.GameObjects.Container | null = null;
+
+  // 파생 스탯 섹션 y 위치 (프리뷰 오버레이에서 참조)
+  private derivedSectionY = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, creature: Creature) {
     super(scene, x, y);
@@ -106,18 +127,37 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
   private buildCreatureInfo() {
     // 패널 배경
     this.creatureBg = this.scene.add.graphics();
-    this.creatureBg.fillStyle(THEME.colors.panelBg, 1);
-    this.creatureBg.fillRoundedRect(L.creatureX, 0, L.creatureW, L.creatureH, 4);
     this.add(this.creatureBg);
 
-    this.creatureContainer = this.scene.add.container(L.creatureX, 0);
+    this.creatureContainer = this.scene.add.container(L.creatureX, TOP_PAD);
     this.add(this.creatureContainer);
 
     this.redrawCreatureInfo();
   }
 
+  /** 패널 배경 렌더링: 깨끗한 fillRoundedRect + 열화 시 organic stroke */
+  private redrawCreatureBg() {
+    this.creatureBg.clear();
+    const visuals = getDegradationVisuals(this.creature);
+    const bgColor = darkenColor(THEME.colors.panelBg, visuals.darkenFactor);
+
+    // 깨끗한 사각형 배경 (TOP_PAD부터 시작)
+    this.creatureBg.fillStyle(bgColor, 1);
+    this.creatureBg.fillRoundedRect(L.creatureX, TOP_PAD, L.creatureW, L.creatureH - TOP_PAD, 4);
+
+    // 열화 경고 테두리만 유기적 형태
+    if (visuals.borderColor !== null) {
+      this.creatureBg.lineStyle(2, visuals.borderColor, visuals.borderAlpha);
+      strokeOrganicRect(this.creatureBg, L.creatureX, TOP_PAD + 2, L.creatureW, L.creatureH - TOP_PAD - 4, {
+        seed: 42, amplitude: 1, segments: 12,
+      });
+    }
+  }
+
   private redrawCreatureInfo() {
     this.creatureContainer.removeAll(true);
+    this.redrawCreatureBg();
+
     const c = this.creature;
     const pad = 12;
     let ly = 12;
@@ -250,6 +290,9 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
     this.creatureContainer.add(sectionTitle2);
     ly += 18;
 
+    // 프리뷰 오버레이용 y 위치 저장
+    this.derivedSectionY = ly;
+
     const derivedEntries = [
       { label: 'HP', value: Math.round(derived.hp), color: THEME.colors.textMain },
       { label: 'ATK', value: Math.round(derived.atk), color: THEME.colors.textMain },
@@ -348,6 +391,7 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
       });
       this.creatureContainer.add(warnText);
     }
+
   }
 
   // ═══════════════════════════════════════
@@ -355,13 +399,13 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
   // ═══════════════════════════════════════
 
   private buildPlasmidSelector() {
-    // 패널 배경
+    // 패널 배경 — 깨끗한 fillRoundedRect (TOP_PAD부터 시작)
     this.selectorBg = this.scene.add.graphics();
     this.selectorBg.fillStyle(THEME.colors.panelBg, 1);
-    this.selectorBg.fillRoundedRect(L.selectorX, 0, L.selectorW, L.selectorH, 4);
+    this.selectorBg.fillRoundedRect(L.selectorX, TOP_PAD, L.selectorW, L.selectorH - TOP_PAD, 4);
     this.add(this.selectorBg);
 
-    this.selectorContainer = this.scene.add.container(L.selectorX, 0);
+    this.selectorContainer = this.scene.add.container(L.selectorX, TOP_PAD);
     this.add(this.selectorContainer);
 
     this.redrawPlasmidSelector();
@@ -454,7 +498,7 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
     this.selectorContainer.add(catTag);
 
     // 제거 규칙
-    const removedText = this.scene.add.text(x + 12, y + 28, `\u2716 ${plasmid.removedRule}`, {
+    const removedText = this.scene.add.text(x + 12, y + 26, `\u2716 ${plasmid.removedRule}`, {
       fontFamily: THEME.font.family,
       fontSize: THEME.font.sizeSmall,
       color: '#cc4444',
@@ -463,7 +507,7 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
     this.selectorContainer.add(removedText);
 
     // 추가 규칙
-    const newRuleY = y + 28 + removedText.height + 2;
+    const newRuleY = y + 26 + removedText.height + 2;
     const newText = this.scene.add.text(x + 12, newRuleY, `\u2714 ${plasmid.newRule}`, {
       fontFamily: THEME.font.family,
       fontSize: THEME.font.sizeSmall,
@@ -474,17 +518,22 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
 
     // 시퀀스 슬롯 수 (오른쪽 하단)
     const slotCount = this.getSlotCount(plasmid);
-    const slotText = this.scene.add.text(x + CARD_W - 12, y + CARD_H - 12, `${slotCount}Phase`, {
+    const slotText = this.scene.add.text(x + CARD_W - 12, y + CARD_H - 10, `${slotCount}Phase`, {
       fontFamily: THEME.font.family,
       fontSize: THEME.font.sizeSmall,
       color: THEME.colors.textDim,
     }).setOrigin(1, 1);
     this.selectorContainer.add(slotText);
 
-    // 클릭 영역
+    // 클릭 + 호버 영역
     const zone = this.scene.add.zone(x + CARD_W / 2, y + CARD_H / 2, CARD_W, CARD_H)
       .setInteractive({ useHandCursor: true });
     zone.on('pointerdown', () => this.selectPlasmid(index));
+
+    // Feature 2: 호버 프리뷰
+    zone.on('pointerover', () => this.showPlasmidPreview(index));
+    zone.on('pointerout', () => this.hidePlasmidPreview());
+
     this.selectorContainer.add(zone);
   }
 
@@ -492,6 +541,7 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
     const pool = this.creature.plasmidPool;
     if (index < 0 || index >= pool.length) return;
 
+    this.hidePlasmidPreview();
     this.selectedPlasmid = pool[index];
     this.redrawPlasmidSelector();
     this.emit('plasmidSelected', this.selectedPlasmid);
@@ -512,6 +562,89 @@ export class PlasmidBench extends Phaser.GameObjects.Container {
     if (plasmid.id === 'overcharge') return 5;
     if (plasmid.id === 'compress') return 2;
     return 4;
+  }
+
+  // ═══════════════════════════════════════
+  //  Feature 2: 호버 프리뷰
+  // ═══════════════════════════════════════
+
+  private showPlasmidPreview(index: number) {
+    this.hidePlasmidPreview();
+
+    const pool = this.creature.plasmidPool;
+    if (index < 0 || index >= pool.length) return;
+    const plasmid = pool[index];
+
+    const preview = previewPlasmidEffect(plasmid, this.creature.stats, this.creature.constitution);
+    if (preview.statDeltas.length === 0 && preview.configChanges.length === 0) return;
+
+    this.previewContainer = this.scene.add.container(L.creatureX, TOP_PAD);
+    this.add(this.previewContainer);
+
+    const pad = 12;
+
+    // 스탯 델타 — 파생 스탯 값 옆에 (+N) / (-N) 표시
+    if (preview.hasStatChange) {
+      const derivedEntries = [
+        { label: 'HP', key: 'hp' },
+        { label: 'ATK', key: 'atk' },
+        { label: 'SPD', key: 'spd' },
+        { label: 'DEF', key: 'defPct' },
+        { label: 'CRIT', key: 'critPct' },
+      ];
+      const colW = 140;
+
+      derivedEntries.forEach((entry, i) => {
+        const delta = preview.statDeltas.find(d => d.key === entry.key);
+        if (!delta) return;
+
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const dx = pad + col * colW + 80;
+        const dy = this.derivedSectionY + row * 18;
+
+        const isPositive = delta.delta > 0;
+        const sign = isPositive ? '+' : '';
+        const color = isPositive ? '#44cc44' : '#cc4444';
+
+        let displayDelta: string;
+        if (entry.key === 'defPct' || entry.key === 'critPct') {
+          displayDelta = `${sign}${(delta.delta * 100).toFixed(1)}%`;
+        } else {
+          displayDelta = `${sign}${Math.round(delta.delta)}`;
+        }
+
+        const deltaText = this.scene.add.text(dx, dy, `(${displayDelta})`, {
+          fontFamily: THEME.font.family,
+          fontSize: THEME.font.sizeSmall,
+          color,
+        });
+        this.previewContainer!.add(deltaText);
+      });
+    }
+
+    // Config 변경 — 열화 섹션 아래에 금색 텍스트
+    if (preview.configChanges.length > 0) {
+      let configY = L.creatureH - 16 * preview.configChanges.length - 8;
+      for (const change of preview.configChanges) {
+        const changeStr = `${change.label}: ${change.before} → ${change.after}`;
+        const changeText = this.scene.add.text(pad, configY, changeStr, {
+          fontFamily: THEME.font.family,
+          fontSize: THEME.font.sizeSmall,
+          color: THEME.colors.textGold,
+        });
+        this.previewContainer!.add(changeText);
+
+        configY += 16;
+      }
+    }
+  }
+
+  private hidePlasmidPreview() {
+    if (this.previewContainer) {
+      this.previewContainer.destroy(true);
+      this.previewContainer = null;
+    }
   }
 
   // ═══════════════════════════════════════
