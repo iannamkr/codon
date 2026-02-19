@@ -1,490 +1,114 @@
 # Codon 개발 계획서
 
-> 최종 갱신: 2026-02-18
-> 상태: 초안 (사용자 승인 대기)
+> 최종 갱신: 2026-02-19
+> 상태: **기획 설계 완료** — 코어 데이터 구현 단계 진입 가능
 
 ---
 
-## 설계 확정/미확정 분류 기준
+## 설계 완료 현황
 
-이 계획서는 CLAUDE.md의 "설계 진행 상황" 테이블과 "미확정 (논의 필요)" 목록을 기준으로 한다.
+| # | 문서 | 상태 | 내용 |
+|---|------|------|------|
+| 009 | `docs/discussion/009-Gene배열-전투시스템-재설계.md` | ✅ 완료 | 전투 시스템 전면 재설계 (9대 결정) |
+| 010 | `docs/design/010-amino-acid-passives.md` | ✅ 완료 | 아미노산 패시브 20종 (바이오펑크 네이밍, 컬러코딩) |
+| 011 | `docs/design/011-enzyme-effects.md` | ✅ 완료 | 효소(조커) 26종 (4역할×6 + Stop×2, 연구원 도구 테마) |
+| 012 | `docs/design/012-combat-formulas.md` | ✅ 완료 | 전투 공식 (HP 듀얼 트랙, 동종 진화 ×1.5+옵션 병합, 꼬리 귀환+탈진) |
+| 013 | `docs/design/013-mutation-system.md` | ✅ 완료 | 변이 시스템 (5등급 변이 풀, MUT 3축 제어, 키메라 이중 타입) |
+| 014 | `docs/design/014-attribute-system.md` | ✅ 완료 | 체질 시스템 (6종 계수 변경, 유전+환경, 혼합 불가) |
+| 015 | `docs/design/015-plasmid-redesign.md` | ✅ 완료 | 플라스미드 12종 역설계 (코어 규칙 1:1 매핑, 매운맛 튜닝) |
 
-| 기호 | 의미 |
-|------|------|
-| ✅ | 확정 — 규칙/구조/수치 모두 구현 가능 |
-| 🔶 | 방향 확정, 수치 미정 — 구조는 구현하되 수치는 플레이스홀더 + 기획 필요 표기 |
-| ❌ | 기획 미확정 — 인터페이스 스텁만 정의, 구현하지 않음 |
+→ **전 설계 문서 완료** → 코어 데이터부터 전투 엔진까지 구현 착수 가능
 
 ---
 
-## 현재 구현 상태
+## ⚠️ 기존 구현 상태
+
+### 무효화된 모듈
+
+| 모듈 | 상태 | 이유 |
+|------|------|------|
+| `src/systems/interaction.ts` | **무효** | 인접 상호작용(공명/대립/융합) 폐기 |
+| `src/systems/sequence-builder.ts` | **무효** | 시퀀스 개념 폐기 |
+| `src/systems/build-manager.ts` | **재작성 필요** | 빌드 = 12 Gene + 효소 4개로 변경 |
+| `src/systems/build-analyzer.ts` | **재작성 필요** | 분석 기준 변경 |
+| `src/data/plasmids.ts` | **보류** | 플라스미드 재설계 대기 |
+| `src/data/elements.ts` | 전이 효과 부분 무효 | 속성 상성은 유효, 전이 효과 테이블 무효 |
+| `src/ui/lab/*` | **재작성 필요** | UI 구조 전면 변경 |
+
+### 유효한 모듈
 
 | 모듈 | 상태 | 비고 |
 |------|------|------|
-| `src/data/types.ts` | ✅ 완료 | 전체 타입 정의 |
-| `src/data/codons.ts` | ✅ 완료 | 64 코돈 → 20 아미노산 + Stop 매핑 |
-| `src/data/sub-genes.ts` | ✅ 완료 | 40종 하위 Gene (이름/설명만, 수치 없음) |
-| `src/data/plasmids.ts` | ✅ 완료 | 12종 플라스미드 (규칙 서술만, 수치 밸런싱 미정) |
-| `src/data/elements.ts` | ✅ 완료 | 4속성 상성 배율 + 전이 효과 매핑 |
-| `src/data/sample.ts` | ✅ 완료 | 샘플 실험체/적/빌드 팩토리 |
-| `src/systems/stats.ts` | ✅ 완료 | 스탯 파생 공식 (수치 확정, 테스트 통과) |
-| `src/systems/interaction.ts` | ✅ 완료 | 인접 상호작용 유형 판정 (Resonance/Opposition/Fusion) |
-| `src/scenes/*` | 프로토타입 | 하드코딩된 샘플 기반 |
-| 테스트 | 일부 완료 | codons, sub-genes, stats, interaction, elements, plasmids |
+| `src/data/types.ts` | 부분 유효 | Gene/Codon 타입은 유효, Sequence/Build 타입 재정의 필요 |
+| `src/data/codons.ts` | ✅ 유효 | 64 코돈 → 20 아미노산 매핑 그대로 |
+| `src/data/sub-genes.ts` | ✅ 유효 | 40종 하위 Gene 이름/설명 그대로 |
+| `src/systems/stats.ts` | ✅ 유효 | 스탯 파생 공식 그대로 |
 
 ---
 
-## 개발 원칙
+## 새 개발 계획
 
-1. **TDD**: 모든 기능은 테스트 코드 먼저 작성 → 구현 → 리팩터링
-2. **에이전트 팀 병렬 실행**: 독립 모듈은 Teams로 병렬 개발
-3. **데이터/로직/UI 분리**: systems 로직은 Phaser 의존성 없이 순수 TS로 작성
+### 우선순위 1: 코어 데이터 재작성 ⬅️ **다음 단계**
 
----
-
-## Phase 1: 코어 데이터 계층 보강
-
-> 목표: 게임 시스템이 의존하는 팩토리와 풀 관리를 완성한다
-
-### 1.1 실험체 팩토리 ✅
-
-풀 크기와 구성 규칙은 모두 확정됨.
-
-#### 1.1.1 CreatureFactory
-- `createCreature(config)`: 설정 기반 실험체 생성
-- `generateRandomCreature()`: 랜덤 생성
-- 코돈 풀 15개 (정지 코돈 제외), 시퀀스 풀 6개, 플라스미드 풀 4개 자동 구성
-- 스탯 랜덤 생성 (기본 범위)
-- 체질/속성 랜덤 배정
-- 고유 ID 생성
-- 테스트: 풀 크기 제약, 정지 코돈 제외, 유효성 검증, ID 유니크
-
-#### 1.1.2 코돈 생성
-- `createCodon(triplet, subGeneIndices)`: 코돈 테이블 기반 생성
-- `createRandomCodon()`: 랜덤 코돈 (정지 코돈 제외)
-- 하위 Gene 3개 배정 (각 자리의 Gene에 맞는 하위 Gene 풀에서 선택)
-- 테스트: 유효한 triplet만 허용, 아미노산 매핑 정확성
-
-### 1.2 풀 관리 시스템 ✅
-
-풀 크기 확정: 코돈 15, 시퀀스 6, 플라스미드 4.
-
-#### 1.2.1 CodonPoolManager
-- `addCodon(pool, codon)`: 추가 (최대 15개)
-- `removeCodon(pool, index)`: 제거
-- 테스트: 경계값 (0, 15), 초과 시 거부
-
-#### 1.2.2 SequencePoolManager
-- `addSequence(pool, sequence)`: 추가 (최대 6개)
-- `removeSequence(pool, seqId)`: 제거
-- 테스트: 경계값 (0, 6)
-
-#### 1.2.3 PlasmidPoolManager
-- `addPlasmid(pool, plasmid)`: 추가 (최대 4개)
-- `removePlasmid(pool, plasmidId)`: 제거
-- 테스트: 경계값 (0, 4)
-
-### 1.3 전투 상태 타입 ✅
-
-전투 흐름은 확정됨. 타입만 정의.
-
-#### 1.3.1 전투 관련 타입 확장
-- `BattleState`: 양쪽 빌드, 현재 페이즈, HP, 활성 전이 효과
-- `PhaseResult`: 슬롯 3쌍 충돌 결과, 전이 효과
-- `SlotResult`: 단일 슬롯 충돌 결과
-- `BattleResult`: 최종 승패, HP 잔량, 적용된 변이 목록
-- 테스트: 컴파일 타임 검증
-
----
-
-## Phase 2: 빌드 시스템
-
-> 목표: 연구실에서 빌드를 구성/수정/검증하는 로직
-
-### 2.1 빌드 구성 ✅
-
-빌드 구조 확정: 플라스미드 1개 + 시퀀스 4개. 플라스미드 먼저 선택.
-
-#### 2.1.1 BuildManager
-- `createBuild(plasmid, sequences)`: 빌드 생성
-- `validateBuild(build, creature)`: 유효성 검증
-  - 시퀀스 4개 필수 (과부하/압축 플라스미드 시 구조 변동)
-  - 플라스미드 1개 필수
-  - 같은 시퀀스 중복 사용 방지
-  - 시퀀스가 실험체의 시퀀스 풀에 존재하는지
-  - 플라스미드가 실험체의 플라스미드 풀에 존재하는지
-- 테스트: 유효/무효 빌드 케이스
-
-#### 2.1.2 빌드 수정
-- `swapSequence(build, slotIndex, newSequence)`: 시퀀스 교체
-- `swapPlasmid(build, newPlasmid)`: 플라스미드 교체
-- `reorderSequences(build, newOrder)`: 시퀀스 순서 변경
-- 테스트: 교체 후 유효성 유지
-
-### 2.2 시퀀스 구성 ✅
-
-시퀀스 = 코돈 3개. 인접 상호작용 판정 로직은 이미 구현됨.
-
-#### 2.2.1 SequenceBuilder
-- `createSequence(id, codons)`: 코돈 3개로 시퀀스 생성
-- `previewInteractions(codons)`: 인접 상호작용 미리보기 (기존 `analyzeSequence` 활용)
-- 테스트: 시퀀스 생성 검증, 상호작용 미리보기
-
-#### 2.2.2 코돈 필터/검색
-- `filterByRole(pool, roleTag)`: 역할 태그로 필터
-- `filterByAminoAcid(pool, aminoAcidId)`: 아미노산으로 필터
-- `filterByRarity(pool, maxPathCount)`: 희귀도로 필터
-- 테스트: 필터 결과, 빈 결과 처리
-
-### 2.3 빌드 분석 ✅
-
-역할 태그/상호작용 분포는 확정 데이터로 계산 가능.
-
-#### 2.3.1 BuildAnalyzer
-- `getRoleDistribution(build)`: 역할 태그 분포 (Destroy/Survive/Order/Chaos 비율)
-- `getInteractionDistribution(build)`: 인접 상호작용 분포 (공명/대립/융합 수)
-- `getRarityDistribution(build)`: 희귀도 분포
-- 테스트: 분석 결과 정확성
-
----
-
-## Phase 3: 전투 엔진
-
-> 목표: 전투 흐름(구조)을 순수 TS로 구현한다.
-> **데미지 공식/판정 공식은 미정** (CLAUDE.md: "판정 공식 미정"). 구조만 구현하고 수치 계산은 플레이스홀더.
-
-### 3.1 페이즈 관리 ✅
-
-4페이즈 순차 진행, 종료 조건 = 확정됨.
-
-#### 3.1.1 PhaseManager
-- `initBattle(myBuild, enemyBuild)`: 전투 초기화
-- `getCurrentPhase()`: 현재 페이즈 번호 (0~3)
-- `advancePhase()`: 다음 페이즈로 이동
-- `isBattleOver(state)`: 전투 종료 조건 (HP≤0 또는 4페이즈 완료)
-- `getWinner(state)`: 승자 판정 (HP 비교)
-- 테스트: 페이즈 순서, 조기 종료 (HP 0), 정상 종료 (4페이즈), HP 동점
-
-### 3.2 선후공 판정 ✅
-
-SPD 기반 선후공 확정됨.
-
-#### 3.2.1 TurnOrder
-- `determineOrder(mySpd, enemySpd)`: 선공/후공 결정
-- SPD 높은 쪽 선공, 동점 시 랜덤
-- 테스트: SPD 차이별 결과, 동점 처리
-
-### 3.3 전이 효과 판정 ✅
-
-10종 전이 효과 + 다수결 규칙 확정됨. `getTransitionEffect()`은 이미 구현됨.
-
-#### 3.3.1 TransitionResolver
-- `resolveTransition(phaseResult)`: 3슬롯의 역할 태그 쌍 → 전이 효과 3개 산출 → 다수결 적용
-- 다수결: 3개 중 가장 많은 반응 = 전이 효과. 모두 다르면 규칙 필요 (🔶)
-- 테스트: 다수결 판정, 동점 처리
-
-### 3.4 변이 발동 판정 ✅
-
-발동 확률 = MUT/(MUT+100), 페이즈당 1회 체크, 수락/거부, 영구 적용 — 확정됨.
-
-#### 3.4.1 MutationChecker
-- `checkMutation(mutChance)`: 변이 발동 여부 판정
-- `acceptMutation(codon, mutation)`: 변이 영구 적용
-- `rejectMutation()`: 변이 거부
-- 테스트: 발동 확률 (MUT=0 → 0%, MUT=100 → 50%), 영구 적용 후 원복 불가
-
-#### 3.4.2 변이 내용 생성 ❌
-- **미확정**: CLAUDE.md "미확정 (논의 필요)" 에 "돌연변이: 변이 시스템의 재설계" 명시
-- 변이가 코돈의 무엇을 어떻게 바꾸는지 기획 논의 필요
-- 현재는 `generateMutationProposal()` → 스텁 (빈 변이 반환)
-
-### 3.5 플라스미드 규칙 적용 🔶
-
-12종 플라스미드의 규칙 변경은 서술됨. 구조적 규칙 변경은 구현 가능, 수치 밸런싱은 미정.
-
-#### 3.5.1 구조 변경 (구현 가능)
-- `역행`: 슬롯 발동 순서를 역순으로 변경
-- `공명체`: 인접 상호작용 판정 대신, 3코돈 동일 역할 태그 체크
-- `거울`: 내 시퀀스 대신 상대 시퀀스 사용 (하위 Gene만 교체)
-- `선독`: Phase 1~3 스킵, Phase 4만 실행
-- `불안정 서열`: 변이 수락/거부 UI 제거, 자동 수락
-- `순수 서열`: 변이 체크 스킵
-- `적응체`: 변이 적용을 전투 중 임시로 변경
-- `무속성`: 상성 배율을 항상 1.0으로 고정
-- `키메라`: 코돈별 속성을 랜덤 배정
-- `과부하`: 시퀀스 구조를 코돈 2개/시퀀스, 5페이즈로 변경
-- `압축`: 2페이즈로 변경, 페이즈당 코돈 6개
-- `기생체`: 상대 플라스미드 효과 무효화
-- 테스트: 각 플라스미드 활성 시 전투 흐름 변경 검증
-
-#### 3.5.2 수치 밸런싱 (미정)
-- 공명체 ×3 배율 → 조정 필요할 수 있음
-- 선독 ×4 배율 → 조정 필요할 수 있음
-- 순수 서열 +20% → 조정 필요할 수 있음
-- 무속성 +30% → 조정 필요할 수 있음
-- 키메라 ×1.5 → 조정 필요할 수 있음
-- 적응체 ×0.5 → 조정 필요할 수 있음
-- 불안정 서열 확률 2배 → 조정 필요할 수 있음
-- ⚠️ 현재 CLAUDE.md에 기재된 수치를 초기값으로 사용하되, "밸런싱 미정" 표기
-
-### 3.6 데미지/효과 계산 🔶
-
-> **CLAUDE.md: "판정 공식 미정"**
-> 스탯 파생 공식(deriveStats)은 확정됨. 하지만 "코돈이 적에게 얼마의 데미지를 주는가"의 공식은 미정.
-
-#### 3.6.1 확정된 것
-- 스탯 파생: HP/ATK/SPD/DEF%/CRT%/CRT_DMG/MUT_CHANCE ✅ (구현 완료)
-- 속성 상성 배율: 1.2/0.8/1.0 ✅ (구현 완료)
-- 속성 고유 효과 방향: Fire=점화(DoT), Water=둔화(SPD-), Earth=경화(DEF+), Plant=재생(HP+) ✅
-- 크리티컬 확률: MUT/(MUT+100) ✅
-- 크리티컬 배율: 1.5 + MUT/200 ✅
-- 방어율: RES/(RES+100) ✅
-
-#### 3.6.2 미정 — 기획 논의 필요
-- 아미노산(스킬)별 기본 위력 테이블 (20종 각각의 base power)
-- 하위 Gene 보너스 구체 수치 (40종 각각의 %, 고정값 등)
-  - 설명은 있음 (예: "강타 = 위력 증가") 하지만 수치 없음
-- 인접 상호작용 보너스 수치 (공명/대립/융합이 데미지에 얼마나 영향?)
-  - 방향은 있음 (공명=증폭, 대립=강력+불안정, 융합=복합효과) 하지만 수치 없음
-- 전이 효과 적용 수치 (폭주가 데미지를 얼마나 증가?)
-  - 방향은 있음 (10종 각각의 효과 방향) 하지만 수치 없음
-- 속성 고유 효과 수치 (점화 DoT가 몇 % HP?)
-
-#### 3.6.3 구현 전략
-- Phase 3에서는 **전투 흐름 구조만 구현** (페이즈 진행, 선후공, 전이 판정, 변이 체크)
-- 데미지 계산은 `DamageCalculator` 인터페이스만 정의하고, 플레이스홀더 구현
-- 수치 기획 논의 후 `DamageCalculator` 구현체를 교체
-
-### 3.7 전투 엔진 통합 🔶
-
-#### 3.7.1 BattleEngine
-- `start(myBuild, enemyBuild, myStats, enemyStats)`: 전투 시작
-- `runPhase()`: 단일 페이즈 실행 (충돌 → 전이 → 변이)
-- `getResult()`: 최종 결과 반환
-- 전투 이벤트 로그 (재생용 이벤트 스트림)
-- 테스트: 전체 흐름 통합 (데미지는 플레이스홀더)
-
----
-
-## Phase 4: 열화 시스템
-
-> 목표: 실험체 열화/은퇴/사망 처리
-
-### 4.1 열화 추적 🔶
-
-방향 확정: 출격할수록 약해짐. N회 후 자연 은퇴. 수치 미정.
-
-#### 4.1.1 DegradationTracker
-- `trackExpedition(creature)`: 출격 횟수 +1
-- `getDegradationLevel(creature)`: 현재 열화 단계
-- `isRetirementReady(creature)`: 은퇴 조건 충족 여부
-- ⚠️ 열화 곡선/은퇴 트리거 횟수: 기획 논의 필요
-- 테스트: 출격 카운트 증가, 열화 단계 변화 (곡선은 플레이스홀더)
-
-### 4.2 은퇴/사망 처리 ✅
-
-은퇴 = 코돈 차선 보존, 사망 = 전부 손실 — 확정됨.
-
-#### 4.2.1 LifecycleManager
-- `retireCreature(creature)`: 은퇴 처리 → 코돈을 뱅크 대기 목록에 추가
-- `handleDeath(creature)`: 사망 처리 → 실험체 제거, 코돈 전부 손실
-- 테스트: 은퇴 시 코돈 보존, 사망 시 전부 손실
-
----
-
-## Phase 5: 연구실 UI (LabScene)
-
-> 목표: 프로토타입을 실제 시스템과 연결한다
-
-### 5.1 실험체 정보 패널 ✅
-
-모든 표시 데이터가 확정됨 (types.ts + deriveStats).
-
-#### 5.1.1 기본 정보 표시
-- 이름, 세대, 체질, 속성
-- 기본 스탯 (STR/DEX/RES/MUT)
-- 파생 스탯 (HP/ATK/SPD/DEF%/CRT%/변이%)
-- 출격 횟수 / 열화 단계
-
-#### 5.1.2 코돈 풀 뷰
-- 15개 코돈: triplet + 스킬명 + 희귀도(★/◆) + 역할 태그 색상
-- 하위 Gene 3개 표시
-- 코돈 클릭 시 상세 팝업
-
-#### 5.1.3 실험체 전환
-- 보유 실험체 목록에서 선택
-- 선택 시 패널 갱신
-
-### 5.2 빌드 구성 UI ✅
-
-빌드 구조 확정. 기존 프로토타입 확장.
-
-#### 5.2.1 플라스미드 선택 패널 (기존 구현 개선)
-- 플라스미드 풀 4개 버튼
-- 선택 시 규칙 변경 설명 (제거/추가)
-- 선택 변경 시 빌드 리셋 경고
-
-#### 5.2.2 시퀀스 빌드 슬롯 4개 (기존 구현 개선)
-- 빈 슬롯 클릭 → 시퀀스 선택 팝업 (기존 구현)
-- 배치된 슬롯: 코돈 3개 + 인접 상호작용 (기존 구현)
-- 슬롯 해제 (기존 구현)
-
-#### 5.2.3 빌드 요약 + 출격
-- 역할 태그 분포, 상호작용 분포 (Phase 2.3 BuildAnalyzer 연동)
-- 빌드 완성도 (플라스미드 + 시퀀스 4개)
-- 출격 버튼 → BattleScene 전환 (Build 데이터 전달)
-
-### 5.3 시스템 연동 ✅
-
-프로토타입의 하드코딩을 시스템 호출로 교체.
-
-#### 5.3.1 SAMPLE_CREATURE → CreatureFactory
-- 샘플 데이터 대신 CreatureFactory로 실험체 생성
-- 실험체 목록 관리 (메모리 내)
-
-#### 5.3.2 빌드 검증
-- 출격 시 `validateBuild()` 호출
-- 무효 빌드 시 출격 차단 + 안내 메시지
-
----
-
-## Phase 6: 전투 UI (BattleScene)
-
-> 목표: 프로토타입을 BattleEngine과 연결한다
-
-### 6.1 BattleEngine 연동 🔶
-
-기존 데모 데이터 → 실제 BattleEngine 결과로 교체.
-
-#### 6.1.1 전투 데이터 연결
-- LabScene에서 전달된 Build로 BattleEngine 초기화
-- 적 빌드 생성 (임시: 랜덤 CreatureFactory + BuildManager)
-- 페이즈별 BattleEngine.runPhase() 결과를 릴 연출에 반영
-
-#### 6.1.2 슬롯머신 연출 (기존 구현 개선)
-- 릴 스핀 → Build의 실제 코돈 표시
-- LED 스크린 → 적의 실제 코돈 표시
-- 데미지 팝업 → BattleEngine 계산 결과 표시 (🔶 데미지 공식 미정 동안은 플레이스홀더)
-
-#### 6.1.3 전이 효과 표시
-- 페이즈 종료 시 TransitionResolver 결과 표시
-
-#### 6.1.4 변이 팝업
-- MutationChecker 발동 시 수락/거부 팝업
-- ⚠️ 변이 내용 표시는 변이 시스템 기획 후 (현재는 "변이 발생" 메시지만)
-
-#### 6.1.5 전투 결과 화면
-- BattleEngine.getResult() 기반 승패 표시
-- 귀환 버튼 → LabScene
-
----
-
-## 미확정 시스템 (기획 논의 필요)
-
-아래 항목들은 **방향만 확정되었거나 미착수** 상태이므로 개발 계획에 포함하지 않는다.
-기획 논의 완료 후 이 계획서에 추가한다.
-
-### 기획 논의 필요 목록
-
-| 항목 | 현재 상태 | 필요한 논의 |
-|------|----------|------------|
-| **데미지 판정 공식** | 방향 확정, 공식 미정 | 아미노산별 base power, 하위 Gene 보너스 수치, 인접 상호작용 보너스 수치, 전이 효과 수치 |
-| **돌연변이 시스템** | "재설계 필요" 명시 | 변이가 코돈의 무엇을 어떻게 바꾸는지 |
-| **교배 시스템** | 방향만 확정 | 코돈 유전 규칙, 스탯/체질/속성 유전 방식, 교배 변이, 교배=크래프팅 여부 |
-| **유전자 뱅크** | 방향만 확정 | 저장 한도, 재합성 비용/성공률, 열화 효과 수치 |
-| **열화 곡선** | 방향만 확정 | 몇 회 출격 후 은퇴, 스탯 감소 곡선 |
-| **체질 세부** | ⚠️ 재논의 필요 | 유전 방식, 수치 밸런싱, 혼합 체질 |
-| **플라스미드 밸런싱** | 규칙 확정, 수치 미정 | 획득 방법, 교배 시 유전 여부, 배율 밸런스 |
-| **Expression Tree** | 미착수 | 전체 설계 필요 |
-| **Lab Item** | 미착수 | 전체 설계 필요 |
-| **수집/자랑 요소** | 미착수 | 전체 설계 필요 |
-
----
-
-## 개발 순서 및 병렬화 전략
+기획 확정 완료. 구현 착수 가능.
 
 ```
-┌─────────────────────────────────────────────┐
-│ Phase 1: 코어 데이터 (선행) ✅                │
-│  1.1 CreatureFactory  │  1.2 풀 관리         │
-│  1.3 전투 상태 타입                           │
-└─────────────────────────────────────────────┘
-          ↓
-┌─────────────────────────────────────────────┐
-│ Phase 2 + 3: 병렬 개발 가능                   │
-│                                             │
-│  [Agent A] 빌드 시스템 ✅                     │
-│   2.1 BuildManager                          │
-│   2.2 SequenceBuilder                       │
-│   2.3 BuildAnalyzer                         │
-│                                             │
-│  [Agent B] 전투 엔진 🔶                      │
-│   3.1 PhaseManager                          │
-│   3.2 TurnOrder                             │
-│   3.3 TransitionResolver                    │
-│   3.4 MutationChecker                       │
-│   3.5 플라스미드 규칙                         │
-│   3.6 DamageCalculator (플레이스홀더)         │
-│   3.7 BattleEngine 통합                     │
-└─────────────────────────────────────────────┘
-          ↓
-┌─────────────────────────────────────────────┐
-│ Phase 4: 열화 🔶 (수치 플레이스홀더)           │
-│  4.1 DegradationTracker                     │
-│  4.2 LifecycleManager (은퇴/사망)            │
-└─────────────────────────────────────────────┘
-          ↓
-┌─────────────────────────────────────────────┐
-│ Phase 5 + 6: 병렬 개발 가능                   │
-│                                             │
-│  [Agent A] LabScene ✅                       │
-│   5.1 실험체 패널                             │
-│   5.2 빌드 UI                                │
-│   5.3 시스템 연동                             │
-│                                             │
-│  [Agent B] BattleScene 🔶                    │
-│   6.1 BattleEngine 연동                     │
-└─────────────────────────────────────────────┘
-          ↓
-┌─────────────────────────────────────────────┐
-│ ★ 기획 논의 마일스톤 ★                        │
-│                                             │
-│  여기서 미확정 시스템 기획 논의:                │
-│  - 데미지 공식                                │
-│  - 돌연변이 시스템 재설계                      │
-│  - 교배 규칙                                  │
-│  - 유전자 뱅크 세부                            │
-│  - 열화 곡선 수치                              │
-│  - 체질 세부                                  │
-│  → 논의 후 후속 Phase 추가                    │
-└─────────────────────────────────────────────┘
+src/data/types.ts            → Gene/DNAChain/Enzyme 타입 재정의
+src/data/amino-acids.ts      → 20종 아미노산 기본 패시브 효과 데이터 (010 기반)
+src/data/enzymes.ts          → 26종 효소 목록 (011 기반)
 ```
 
-### 테스트 파일 구조
+### 우선순위 2: 전투 엔진 재작성
 
 ```
-tests/
-├── data/
-│   ├── codons.test.ts          ✅ 완료
-│   ├── sub-genes.test.ts       ✅ 완료
-│   └── (elements, plasmids)    → systems.test.ts에 포함
-├── systems/
-│   ├── systems.test.ts         ✅ 완료
-│   ├── creature-factory.test.ts   Phase 1.1
-│   ├── pool-manager.test.ts       Phase 1.2
-│   ├── build-manager.test.ts      Phase 2.1
-│   ├── sequence-builder.test.ts   Phase 2.2
-│   ├── build-analyzer.test.ts     Phase 2.3
-│   ├── phase-manager.test.ts      Phase 3.1
-│   ├── turn-order.test.ts         Phase 3.2
-│   ├── transition-resolver.test.ts Phase 3.3
-│   ├── mutation-checker.test.ts   Phase 3.4
-│   ├── plasmid-rules.test.ts      Phase 3.5
-│   ├── battle-engine.test.ts      Phase 3.7
-│   ├── degradation.test.ts        Phase 4.1
-│   └── lifecycle.test.ts          Phase 4.2
-├── integration/
-│   ├── build-validation.test.ts   Phase 2
-│   └── battle-flow.test.ts        Phase 3
-└── sanity.test.ts              ✅ 완료
+src/systems/battle/
+  ├── chain-scanner.ts       → 3칸 윈도우 스캐닝 + 코돈 판정
+  ├── matchup-resolver.ts    → 순환 상성 A>T>G>C>A 판정
+  ├── combat-round.ts        → Gene 1:1 전투 (돌파/교대/동등)
+  ├── phase-manager.ts       → 3라운드 = 1페이즈, 코돈 효과 재평가
+  ├── amino-acid-engine.ts   → 아미노산 패시브 발동 (오라/즉발/스택)
+  ├── enzyme-trigger.ts      → 효소 조건 체크 + 효과 발동 (패턴/조건/이벤트)
+  ├── frameshift.ts          → 프레임시프트 처리
+  ├── survivor-pool.ts       → Survivor Pool 관리
+  └── battle-engine.ts       → 통합 엔진
 ```
+
+### 우선순위 3: 실험체 시스템
+
+```
+src/systems/creature/
+  ├── crystallization.ts     → 12칸 결정화 (잠김 관리)
+  ├── splicing.ts            → CRISPR/Splicing (빈 칸에 Gene 삽입)
+  └── lifecycle.ts           → 탄생/성장/노화/결정화/은퇴
+```
+
+### 우선순위 4: 연구실 UI 재작성
+
+```
+DNA Chain 12칸 배치 UI (컬러코딩: 🔴🟢🔵🟣)
+효소(조커) 4슬롯 장착 UI (역할 색상 라벨 + 트리거 아이콘)
+아미노산 패시브 프리뷰 (바이오펑크 기관 이름 + 툴팁에 학술명)
+Gene 인벤토리 (일체형 아이템 목록)
+족보 프리뷰 + 효소 매칭 상태
+```
+
+### 우선순위 5: 플라스미드 역설계
+
+코돈(아미노산) + 효소 확립 완료 → 역설계 조건 충족.
+유저 선호 콤보 파악 → 그 콤보를 비트는 플라스미드 설계.
+
+---
+
+## 병렬화 전략
+
+```
+[완료] 010: 아미노산 패시브 20종  ─┐
+[완료] 011: 효소 26종              ─┤
+                                   ├→ [구현] 코어 데이터 → 전투 엔진 → 실험체 → UI
+[구현] types.ts 재정의             ─┘  (순차)
+                                          ↓
+                                   [기획] 플라스미드 역설계 (병렬 가능)
+```
+
+기획 완료. 구현은 데이터 → 엔진 → 실험체 → UI 순차.
+플라스미드 기획은 구현과 병렬 진행 가능.
