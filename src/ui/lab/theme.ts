@@ -101,26 +101,23 @@ export const THEME = {
       // 조립대 (합성 + 코돈풀 + 시퀀스 조립) — x=960..1919
       assemble: {
         synthX: 10,
-        synthW: 280,
+        synthW: 300,
         synthH: 440,
-        poolX: 300,
+        poolX: 320,
         poolW: 300,
         poolH: 440,
-        assemblerX: 610,
-        assemblerW: 340,
+        assemblerX: 630,
+        assemblerW: 320,
         assemblerH: 440,
       },
-      // 빌드대 (빌드 보드 + 분석 + 출격) — x=1920..2879
+      // 빌드대 (빌드 보드 + 분석) — x=1920..2879
       build: {
         boardX: 10,
-        boardW: 400,
-        boardH: 380,
-        analysisX: 420,
-        analysisW: 280,
-        analysisH: 380,
-        actionX: 710,
-        actionW: 240,
-        actionH: 380,
+        boardW: 460,
+        boardH: 440,
+        analysisX: 480,
+        analysisW: 470,
+        analysisH: 440,
       },
       // 코돈 미리보기 오버레이 (빌드대 위)
       overlay: {

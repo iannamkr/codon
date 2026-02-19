@@ -10,11 +10,9 @@ import { validateBuild, createBuild } from '../systems/build-manager';
 import { THEME } from '../ui/lab/theme';
 import { TopHUD } from '../ui/lab/TopHUD';
 import { WorkbenchNav, type WorkbenchTab } from '../ui/lab/WorkbenchNav';
-import { ActionColumn } from '../ui/lab/ActionColumn';
 import { BuildBoard } from '../ui/lab/BuildBoard';
 import { BuildAnalysis } from '../ui/lab/panels/BuildAnalysis';
 import { SynthesisBench } from '../ui/lab/panels/SynthesisBench';
-import { GeneInfo } from '../ui/lab/panels/GeneInfo';
 import { PlasmidBench } from '../ui/lab/PlasmidBench';
 import { SequenceAssembler } from '../ui/lab/SequenceAssembler';
 import { CodonPreviewOverlay } from '../ui/lab/CodonPreviewOverlay';
@@ -52,11 +50,9 @@ export class LabScene extends Phaser.Scene {
   // ─── 빌드대 컴포넌트 ───
   private buildBoard!: BuildBoard;
   private buildAnalysis!: BuildAnalysis;
-  private actionColumn!: ActionColumn;
 
   // ─── 조립대 컴포넌트 ───
   private synthBench!: SynthesisBench;
-  private geneInfo!: GeneInfo;
   private craftingInventory!: CraftingInventory;
   private sequenceAssembler!: SequenceAssembler;
 
@@ -114,9 +110,6 @@ export class LabScene extends Phaser.Scene {
     this.buildAnalysis = new BuildAnalysis(this, buildOffset + B.analysisX, 0, this.creature);
     this.workbenchContainer.add(this.buildAnalysis);
 
-    this.actionColumn = new ActionColumn(this, buildOffset + B.actionX, 0);
-    this.workbenchContainer.add(this.actionColumn);
-
     // ─── 조립대 콘텐츠 (x=960..1919) ───
 
     const A = WB.assemble;
@@ -124,9 +117,6 @@ export class LabScene extends Phaser.Scene {
 
     this.synthBench = new SynthesisBench(this, assembleOffset + A.synthX, 0, this.creature);
     this.workbenchContainer.add(this.synthBench);
-
-    this.geneInfo = new GeneInfo(this, assembleOffset + A.poolX, 0);
-    this.workbenchContainer.add(this.geneInfo);
 
     this.craftingInventory = new CraftingInventory(this, assembleOffset + A.poolX, 0, this.creature);
     this.workbenchContainer.add(this.craftingInventory);
@@ -145,9 +135,10 @@ export class LabScene extends Phaser.Scene {
 
     this.workbenchNav.on('tabChange', this.onTabChange, this);
 
-    this.actionColumn.on('viewCodons', this.onViewCodons, this);
-    this.actionColumn.on('reset', this.handleReset, this);
-    this.actionColumn.on('deploy', this.handleDeploy, this);
+    // BuildBoard 이벤트 (ActionColumn에서 이관)
+    this.buildBoard.on('viewCodons', this.onViewCodons, this);
+    this.buildBoard.on('reset', this.handleReset, this);
+    this.buildBoard.on('deploy', this.handleDeploy, this);
 
     this.events.on('slotSelected', this.onSlotSelected, this);
     this.events.on('codonPositionSelected', this.onCodonPositionSelected, this);
@@ -411,7 +402,7 @@ export class LabScene extends Phaser.Scene {
     this.buildBoard.highlightSlot(null);
     this.updateBuildAnalysis();
     this.updateDeployState();
-    this.actionColumn.setStatus('빌드 초기화됨', THEME.colors.textDim);
+    this.buildBoard.setStatus('빌드 초기화됨', THEME.colors.textDim);
     this.time.delayedCall(1500, () => this.updateDeployState());
   }
 
@@ -419,13 +410,13 @@ export class LabScene extends Phaser.Scene {
 
   private handleDeploy() {
     if (!this.currentBuild) {
-      this.actionColumn.setStatus('빌드를 먼저 완성하세요', '#cc3333');
+      this.buildBoard.setStatus('빌드를 먼저 완성하세요', '#cc3333');
       return;
     }
 
     const result = validateBuild(this.currentBuild, this.creature);
     if (!result.valid) {
-      this.actionColumn.setStatus(result.errors[0] ?? '빌드 오류', '#cc3333');
+      this.buildBoard.setStatus(result.errors[0] ?? '빌드 오류', '#cc3333');
       return;
     }
 
@@ -475,16 +466,16 @@ export class LabScene extends Phaser.Scene {
 
   private updateDeployState() {
     const hasValidBuild = this.currentBuild !== null;
-    this.actionColumn.setDeployEnabled(hasValidBuild);
+    this.buildBoard.setDeployEnabled(hasValidBuild);
 
     if (hasValidBuild) {
-      this.actionColumn.setStatus('출격 가능', THEME.colors.textGold);
+      this.buildBoard.setStatus('출격 가능', THEME.colors.textGold);
     } else {
       const required = this.selectedPlasmid
         ? requiredSeqCount(this.selectedPlasmid)
         : 4;
       const filled = this.buildSlots.filter(s => s !== null).length;
-      this.actionColumn.setStatus(
+      this.buildBoard.setStatus(
         `시퀀스 ${required - filled}개 더 필요`,
         THEME.colors.textDim,
       );

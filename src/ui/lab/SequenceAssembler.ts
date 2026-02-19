@@ -1,6 +1,6 @@
 // ─── SequenceAssembler: 조립대 오른쪽 패널 ───
 // 코돈 3개를 배치하여 시퀀스를 조립하는 워크스테이션.
-// 코돈 슬롯 3자리 + 상호작용 미리보기 + 배치 코돈 상세 + 시퀀스풀 요약 + 확정 버튼
+// 코돈 슬롯 3자리 + 상호작용 미리보기 + 호버 툴팁 + 시퀀스풀 요약 + 확정 버튼
 // 코돈은 가운데 CraftingInventory에서 placeCodon() API를 통해 전달받음.
 
 import Phaser from 'phaser';
@@ -13,7 +13,7 @@ import { THEME, getRoleColor, getRarityLabel, getInteractionColor } from './them
 
 // ─── 레이아웃 상수 ───
 
-const PANEL_W = 340;
+const PANEL_W = 320;
 const PANEL_H = 440;
 const PAD = 8;
 
@@ -29,21 +29,14 @@ const INTER_ICON_W = 20;
 // 상호작용 미리보기
 const INTERACTION_Y = 80;
 
-// 구분선 1
-const DIVIDER1_Y = 100;
-
-// 배치 코돈 상세
-const DETAIL_Y = 108;
-const DETAIL_BLOCK_H = 80;
-
-// 구분선 2
-const DIVIDER2_Y = 354;
+// 구분선
+const DIVIDER_Y = 100;
 
 // 시퀀스풀 요약
-const SUMMARY_Y = 362;
+const SUMMARY_Y = 112;
 
 // 확정 버튼
-const BTN_Y = 390;
+const BTN_Y = 140;
 const BTN_W = 140;
 const BTN_H = 32;
 
@@ -55,11 +48,13 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
   // UI 요소
   private slotsContainer!: Phaser.GameObjects.Container;
   private interactionText!: Phaser.GameObjects.Text;
-  private detailContainer!: Phaser.GameObjects.Container;
   private summaryText!: Phaser.GameObjects.Text;
   private confirmBtnBg!: Phaser.GameObjects.Graphics;
   private confirmBtnText!: Phaser.GameObjects.Text;
   private confirmBtnZone!: Phaser.GameObjects.Zone;
+
+  // 툴팁
+  private tooltipContainer: Phaser.GameObjects.Container | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number, creature: Creature) {
     super(scene, x, y);
@@ -83,9 +78,9 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
   reset(): void {
     this.codonSlots = [null, null, null];
     this.activePos = 0;
+    this.hideTooltip();
     this.redrawSlots();
     this.updateInteractionPreview();
-    this.redrawDetail();
     this.updateSummary();
     this.updateConfirmBtn();
     this.emit('slotsChanged', { codons: [...this.codonSlots] });
@@ -106,9 +101,9 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
     this.codonSlots[this.activePos] = codon;
     this.moveToNextEmptyPos();
 
+    this.hideTooltip();
     this.redrawSlots();
     this.updateInteractionPreview();
-    this.redrawDetail();
     this.updateConfirmBtn();
     this.emit('slotsChanged', { codons: [...this.codonSlots] });
     this.emitSlotContext();
@@ -142,15 +137,12 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
 
     this.buildSlots();
     this.buildInteractionPreview();
-    this.buildDivider(DIVIDER1_Y);
-    this.buildDetailSection();
-    this.buildDivider(DIVIDER2_Y);
+    this.buildDivider(DIVIDER_Y);
     this.buildSummary();
     this.buildConfirmBtn();
 
     this.redrawSlots();
     this.updateInteractionPreview();
-    this.redrawDetail();
     this.updateSummary();
     this.updateConfirmBtn();
     this.emitSlotContext();
@@ -234,13 +226,15 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
         this.slotsContainer.add(text);
       }
 
-      // 클릭: 배치된 코돈 해제 / 활성 Pos 전환
+      // 클릭/호버 영역
       const zone = this.scene.add.zone(
         cx + SLOT_CHIP_W / 2, SLOT_CHIP_H / 2,
         SLOT_CHIP_W, SLOT_CHIP_H,
       ).setInteractive({ useHandCursor: true });
       const idx = i;
       zone.on('pointerdown', () => this.onSlotClick(idx));
+      zone.on('pointerover', () => this.showTooltip(idx));
+      zone.on('pointerout', () => this.hideTooltip());
       this.slotsContainer.add(zone);
 
       // 상호작용 아이콘 (i=0,1에만)
@@ -265,6 +259,7 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
   }
 
   private onSlotClick(pos: number) {
+    this.hideTooltip();
     if (this.codonSlots[pos]) {
       this.codonSlots[pos] = null;
       this.activePos = pos;
@@ -274,7 +269,6 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
     }
     this.redrawSlots();
     this.updateInteractionPreview();
-    this.redrawDetail();
     this.updateConfirmBtn();
     this.emitSlotContext();
   }
@@ -365,30 +359,14 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
     this.add(divider);
   }
 
-  // ═══ 배치 코돈 상세 (3블록) ═══
+  // ═══ 호버 툴팁 ═══
 
-  private buildDetailSection() {
-    this.detailContainer = this.scene.add.container(0, 0);
-    this.add(this.detailContainer);
-  }
+  private showTooltip(pos: number) {
+    const codon = this.codonSlots[pos];
+    if (!codon) return;
 
-  private redrawDetail() {
-    this.detailContainer.removeAll(true);
+    this.hideTooltip();
 
-    for (let i = 0; i < 3; i++) {
-      const blockY = DETAIL_Y + i * DETAIL_BLOCK_H;
-      const codon = this.codonSlots[i];
-      const isActive = this.activePos === i;
-
-      if (codon) {
-        this.renderCodonBlock(codon, i, blockY, isActive);
-      } else {
-        this.renderEmptyBlock(i, blockY, isActive);
-      }
-    }
-  }
-
-  private renderCodonBlock(codon: Codon, pos: number, y: number, isActive: boolean) {
     const amino = AMINO_ACIDS[codon.aminoAcidId];
     if (!amino) return;
 
@@ -396,79 +374,68 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
     const roleHex = '#' + roleColor.toString(16).padStart(6, '0');
     const rarity = getRarityLabel(amino.pathCount);
 
-    // 블록 배경
-    const blockBg = this.scene.add.graphics();
-    blockBg.fillStyle(THEME.colors.cardBg, 0.4);
-    blockBg.fillRoundedRect(PAD, y, PANEL_W - PAD * 2, DETAIL_BLOCK_H - 4, 3);
-    if (isActive) {
-      blockBg.lineStyle(1, THEME.colors.resonance, 0.4);
-      blockBg.strokeRoundedRect(PAD, y, PANEL_W - PAD * 2, DETAIL_BLOCK_H - 4, 3);
-    }
-    blockBg.fillStyle(roleColor, 1);
-    blockBg.fillRect(PAD, y + 2, 3, DETAIL_BLOCK_H - 8);
-    this.detailContainer.add(blockBg);
+    this.tooltipContainer = this.scene.add.container(0, 0);
+    this.add(this.tooltipContainer);
 
-    let ly = y + 4;
+    const tooltipW = PANEL_W - PAD * 2;
+    const tooltipX = PAD;
+    const tooltipY = SLOTS_Y + SLOT_CHIP_H + 10; // 슬롯 바로 아래
 
-    // 헤더: Pos N: [ATG] skillName ★
-    const headerStr = `Pos${pos + 1}: [${codon.triplet}] ${amino.skillName}${rarity ? ' ' + rarity : ''}`;
-    const header = this.scene.add.text(PAD + 10, ly, headerStr, {
-      fontFamily: THEME.font.family,
-      fontSize: THEME.font.sizeSmall,
-      color: THEME.colors.textMain,
-    });
-    this.detailContainer.add(header);
-
-    // 역할 태그 (오른쪽)
-    const roleTag = this.scene.add.text(PANEL_W - PAD - 4, ly, amino.roleTag, {
-      fontFamily: THEME.font.family,
-      fontSize: THEME.font.sizeSmall,
-      color: roleHex,
-    }).setOrigin(1, 0);
-    this.detailContainer.add(roleTag);
-
-    ly += 16;
-
-    // 하위 Gene 3행
+    // 내용 구성
+    const lines: string[] = [];
+    lines.push(`[${codon.triplet}] ${amino.skillName}${rarity ? ' ' + rarity : ''}  —  ${amino.roleTag}`);
+    lines.push(amino.description);
+    lines.push('');
     for (let g = 0; g < 3; g++) {
       const sg = codon.subGenes[g];
       const gene = codon.triplet[g];
-      const geneColor = THEME.colors.gene[gene] ?? 0x888888;
-      const geneHex = '#' + geneColor.toString(16).padStart(6, '0');
+      lines.push(`${gene}-${sg.nameKo} ${sg.description}`);
+    }
 
-      const sgStr = `${gene}-${sg.nameKo} ${sg.description}`;
-      const sgText = this.scene.add.text(PAD + 10, ly, sgStr, {
+    // 높이 계산
+    const lineH = 14;
+    const tooltipH = lines.length * lineH + 12;
+
+    // 배경
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(THEME.colors.cardBg, 0.95);
+    bg.fillRoundedRect(tooltipX, tooltipY, tooltipW, tooltipH, 4);
+    bg.lineStyle(1, roleColor, 0.6);
+    bg.strokeRoundedRect(tooltipX, tooltipY, tooltipW, tooltipH, 4);
+    bg.fillStyle(roleColor, 1);
+    bg.fillRect(tooltipX, tooltipY + 2, 3, tooltipH - 4);
+    this.tooltipContainer.add(bg);
+
+    // 텍스트
+    let ly = tooltipY + 6;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line === '') { ly += 4; continue; }
+
+      let color: string = THEME.colors.textDim;
+      if (i === 0) color = roleHex;
+      else if (i >= 3) {
+        const gene = codon.triplet[i - 3];
+        const geneColor = THEME.colors.gene[gene] ?? 0x888888;
+        color = '#' + geneColor.toString(16).padStart(6, '0');
+      }
+
+      const text = this.scene.add.text(tooltipX + 10, ly, line, {
         fontFamily: THEME.font.family,
-        fontSize: '9px',
-        color: geneHex,
-        wordWrap: { width: PANEL_W - PAD * 2 - 20 },
+        fontSize: '10px',
+        color,
+        wordWrap: { width: tooltipW - 20 },
       });
-      this.detailContainer.add(sgText);
-      ly += 14;
+      this.tooltipContainer.add(text);
+      ly += lineH;
     }
   }
 
-  private renderEmptyBlock(pos: number, y: number, isActive: boolean) {
-    const blockBg = this.scene.add.graphics();
-    blockBg.fillStyle(THEME.colors.cardBg, 0.15);
-    blockBg.fillRoundedRect(PAD, y, PANEL_W - PAD * 2, DETAIL_BLOCK_H - 4, 3);
-    if (isActive) {
-      blockBg.lineStyle(1, THEME.colors.resonance, 0.3);
-      blockBg.strokeRoundedRect(PAD, y, PANEL_W - PAD * 2, DETAIL_BLOCK_H - 4, 3);
+  private hideTooltip() {
+    if (this.tooltipContainer) {
+      this.tooltipContainer.destroy();
+      this.tooltipContainer = null;
     }
-    this.detailContainer.add(blockBg);
-
-    const text = this.scene.add.text(
-      PANEL_W / 2,
-      y + (DETAIL_BLOCK_H - 4) / 2,
-      `Pos${pos + 1}: 코돈을 선택하세요`,
-      {
-        fontFamily: THEME.font.family,
-        fontSize: THEME.font.sizeSmall,
-        color: isActive ? THEME.colors.textDim : '#444455',
-      },
-    ).setOrigin(0.5);
-    this.detailContainer.add(text);
   }
 
   // ═══ 시퀀스풀 요약 ═══
@@ -550,9 +517,9 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
 
     this.codonSlots = [null, null, null];
     this.activePos = 0;
+    this.hideTooltip();
     this.redrawSlots();
     this.updateInteractionPreview();
-    this.redrawDetail();
     this.updateSummary();
     this.updateConfirmBtn();
     this.emit('slotsChanged', { codons: [...this.codonSlots] });
@@ -595,9 +562,9 @@ export class SequenceAssembler extends Phaser.GameObjects.Container {
     if (this.codonSlots[this.activePos] !== null) {
       this.moveToNextEmptyPos();
     }
+    this.hideTooltip();
     this.redrawSlots();
     this.updateInteractionPreview();
-    this.redrawDetail();
     this.updateSummary();
     this.updateConfirmBtn();
     this.emit('slotsChanged', { codons: [...this.codonSlots] });

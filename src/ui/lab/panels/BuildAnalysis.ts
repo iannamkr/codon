@@ -10,10 +10,10 @@ import { getRoleDistribution, getInteractionDistribution, getRarityDistribution 
 import { previewInteractions } from '../../../systems/sequence-builder';
 import { THEME, getRoleColor, getInteractionColor } from '../theme';
 
-const PANEL_W = 280;
-const PANEL_H = 400;
+const PANEL_W = 470;
+const PANEL_H = 440;
 const PAD = 8;
-const BAR_MAX_W = 160;
+const BAR_MAX_W = 300;
 const BAR_H = 10;
 
 const ROLE_LABELS: { key: CodonRoleTag; label: string }[] = [
